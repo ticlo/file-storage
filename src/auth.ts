@@ -6,6 +6,7 @@ export interface UserAuth {
 
 export const devUserAuth: UserAuth = {
   getUserId: () => 'admin',
-  canRead: (projectId: string) => true,
-  canWrite: (projectId: string) => true,
+  canRead: (_projectId: string) => true,
+  canWrite: (_projectId: string) => true,
 };
+

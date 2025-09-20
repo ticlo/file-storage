@@ -138,3 +138,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /previous-work
+/www/*
+/files/proj/*
+/fles/usr/*
