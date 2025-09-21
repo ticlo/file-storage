@@ -3,34 +3,10 @@ import {constants as fsConstants, promises as fs} from 'node:fs';
 import path from 'node:path';
 import type {FastifyReply, FastifyRequest} from 'fastify';
 import type {UserAuth} from './auth';
+import {lookUpMimeType} from './mimeTypes';
 import {AuthProvider, StorageError, StoragePath, StorageScope} from './types';
 
 const {stat, readdir, mkdir, access} = fs;
-
-const MIME_TYPES: Record<string, string> = {
-  '.css': 'text/css',
-  '.csv': 'text/csv',
-  '.dg5': 'application/octet-stream',
-  '.gif': 'image/gif',
-  '.html': 'text/html',
-  '.ico': 'image/x-icon',
-  '.jpeg': 'image/jpeg',
-  '.jpg': 'image/jpeg',
-  '.js': 'application/javascript',
-  '.json': 'application/json',
-  '.map': 'application/json',
-  '.mp4': 'video/mp4',
-  '.ogg': 'application/ogg',
-  '.pdf': 'application/pdf',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.txt': 'text/plain; charset=utf-8',
-  '.webm': 'video/webm',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.xml': 'application/xml',
-  '.zip': 'application/zip',
-};
 
 const CRC32_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -47,14 +23,6 @@ const CRC32_TABLE = (() => {
   }
   return table;
 })();
-
-function lookUpMimeType(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext in MIME_TYPES) {
-    return MIME_TYPES[ext];
-  }
-  return 'application/octet-stream';
-}
 
 function toPosix(partial: string[]): string {
   return partial.filter(Boolean).join('/');

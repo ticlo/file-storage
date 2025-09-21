@@ -4,6 +4,7 @@ import {join, dirname} from 'path';
 import {fileURLToPath} from 'url';
 import {routeFileStorage} from '../src';
 import {devUserAuth} from '../src/auth';
+import {registerSessionRoutes} from './session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,6 +17,8 @@ routeFileStorage(fastify, {
   rootDir: join(__dirname, '..', 'files'),
   authProvider: () => devUserAuth,
 });
+
+registerSessionRoutes(fastify);
 
 const registerStaticFiles = async () => {
   await fastify.register(fastifyStatic, {

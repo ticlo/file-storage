@@ -1,8 +1,6 @@
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
-import react from 'eslint-plugin-react';
-import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default [
@@ -34,19 +32,8 @@ export default [
         ...globals.es2022,
       },
     },
-    plugins: {
-      react,
-      'react-hooks': reactHooks,
-    },
     rules: {
       ...js.configs.recommended.rules,
-      ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
   },
 
@@ -59,9 +46,6 @@ export default [
       parser: tsparser,
       parserOptions: {
         project: './tsconfig.json',
-        ecmaFeatures: {
-          jsx: true,
-        },
       },
       globals: {
         ...globals.browser,
@@ -71,14 +55,10 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      react,
-      'react-hooks': reactHooks,
     },
     rules: {
       ...js.configs.recommended.rules,
       ...tseslint.configs.recommended.rules,
-      ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
       // Disable rules that cause errors in this project
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -94,14 +74,6 @@ export default [
       'no-empty': 'off',
       'import/no-extraneous-dependencies': 'off',
       'no-control-regex': 'off',
-      'react/no-direct-mutation-state': 'off',
-      'react/no-unescaped-entities': 'off',
-      'react/no-unknown-property': 'off',
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
   },
 
@@ -114,9 +86,6 @@ export default [
       parser: tsparser,
       parserOptions: {
         project: './tsconfig.json',
-        ecmaFeatures: {
-          jsx: true,
-        },
       },
       globals: {
         ...globals.browser,
@@ -128,14 +97,10 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      react,
-      'react-hooks': reactHooks,
     },
     rules: {
       ...js.configs.recommended.rules,
       ...tseslint.configs.recommended.rules,
-      ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
       // Disable rules that cause errors in this project
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -151,14 +116,6 @@ export default [
       'no-empty': 'off',
       'import/no-extraneous-dependencies': 'off',
       'no-control-regex': 'off',
-      'react/no-direct-mutation-state': 'off',
-      'react/no-unescaped-entities': 'off',
-      'react/no-unknown-property': 'off',
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
   },
 ];
