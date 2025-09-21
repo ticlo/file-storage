@@ -29,8 +29,7 @@
     "outDir": "dist"
   },
   "include": [
-    "src/**/*",
-    "app/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules"

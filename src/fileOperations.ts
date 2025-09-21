@@ -124,7 +124,39 @@ function crc32(buffer: Buffer): number {
   return (crc ^ -1) >>> 0;
 }
 
+function coerceBodyToBuffer(body: unknown): Buffer | null {
+  if (body === null || body === undefined) {
+    return null;
+  }
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (ArrayBuffer.isView(body)) {
+    const view = body as ArrayBufferView;
+    return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+  }
+  if (body instanceof ArrayBuffer) {
+    return Buffer.from(body);
+  }
+  if (typeof body === 'string') {
+    return Buffer.from(body);
+  }
+  if (typeof body === 'object') {
+    try {
+      return Buffer.from(JSON.stringify(body));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 async function streamToBuffer(request: FastifyRequest): Promise<Buffer> {
+  const bodyBuffer = coerceBodyToBuffer((request as FastifyRequest & {body?: unknown}).body);
+  if (bodyBuffer) {
+    return bodyBuffer;
+  }
+
   const chunks: Buffer[] = [];
   for await (const chunk of request.raw) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

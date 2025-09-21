@@ -30,14 +30,7 @@ import {
   safeGetUserId,
   writeProjectMetadata,
 } from './projectOperations';
-import {
-  AuthProvider,
-  FileQuerystring,
-  FileStorageOptions,
-  ProjectMetadata,
-  StorageError,
-  StoragePath,
-} from './types';
+import {AuthProvider, FileQuerystring, FileStorageOptions, ProjectMetadata, StorageError, StoragePath} from './types';
 
 const {stat, mkdir, rename, rm, copyFile, writeFile} = fs;
 
@@ -54,6 +47,10 @@ export function routeFileStorage(fastify: FastifyInstance, options: FileStorageO
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const rootDir = path.resolve(options.rootDir ?? DEFAULT_ROOT);
   const authProvider: AuthProvider = options.authProvider ?? (() => DEFAULT_AUTH);
+
+  fastify.addContentTypeParser('application/octet-stream', {parseAs: 'buffer'}, (_request, payload, done) => {
+    done(null, payload);
+  });
 
   fastify.addHook('onReady', async () => {
     await mkdir(rootDir, {recursive: true});
@@ -300,10 +297,7 @@ export function routeFileStorage(fastify: FastifyInstance, options: FileStorageO
           const {storage, auth} = await resolvePath(query.path, request);
           await ensureWrite(auth, storage.id);
           const destinationPath = path.join(path.dirname(storage.absolute), sanitized);
-          const relativeToProject = path
-            .relative(storage.projectRoot, destinationPath)
-            .split(path.sep)
-            .join('/');
+          const relativeToProject = path.relative(storage.projectRoot, destinationPath).split(path.sep).join('/');
           if (relativeToProject.startsWith('..')) {
             throw new StorageError('Rename target escapes project root', 400);
           }

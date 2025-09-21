@@ -45,7 +45,7 @@ export default [
       sourceType: 'module',
       parser: tsparser,
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.eslint.json',
       },
       globals: {
         ...globals.browser,
@@ -85,7 +85,7 @@ export default [
       sourceType: 'module',
       parser: tsparser,
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.eslint.json',
       },
       globals: {
         ...globals.browser,
