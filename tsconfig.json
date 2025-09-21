@@ -19,7 +19,7 @@
     ],
     "alwaysStrict": true,
     "noImplicitAny": true,
-    "sourceMap": true,
+    "sourceMap": false,
     "skipLibCheck": true,
     "isolatedModules": true,
     "useDefineForClassFields": true,

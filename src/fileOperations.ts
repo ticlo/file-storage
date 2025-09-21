@@ -164,13 +164,32 @@ async function streamToBuffer(request: FastifyRequest): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+const CACHE_CONTROL_HEADER = 'max-age=0, must-revalidate';
+
 async function sendFileReply(
+  request: FastifyRequest,
   reply: FastifyReply,
   storage: StoragePath,
   info: {mtime: Date; mtimeMs: number; size: number}
 ) {
-  reply.header('ETag', buildEtag(info));
-  reply.header('Last-Modified', info.mtime.toUTCString());
+  const etag = buildEtag(info);
+  const ifNoneMatchHeader = request.headers['if-none-match'];
+  const presentedEtags = Array.isArray(ifNoneMatchHeader)
+    ? ifNoneMatchHeader
+    : typeof ifNoneMatchHeader === 'string'
+      ? ifNoneMatchHeader.split(',')
+      : [];
+  const normalizedEtags = presentedEtags.map((value) => value.trim());
+
+  if (normalizedEtags.includes('*') || normalizedEtags.includes(etag)) {
+    reply.code(304);
+    reply.header('Cache-Control', CACHE_CONTROL_HEADER);
+    reply.header('ETag', etag);
+    return reply.send();
+  }
+
+  reply.header('Cache-Control', CACHE_CONTROL_HEADER);
+  reply.header('ETag', etag);
   reply.header('Content-Length', info.size);
   reply.type(lookUpMimeType(storage.absolute));
   return reply.send(createReadStream(storage.absolute));

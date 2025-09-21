@@ -101,7 +101,7 @@ export function routeFileStorage(fastify: FastifyInstance, options: FileStorageO
       if (info.isDirectory()) {
         throw new StorageError('Requested path is a directory', 400);
       }
-      return sendFileReply(reply, storage, info);
+      return sendFileReply(request, reply, storage, info);
     });
   }
 
