@@ -451,4 +451,6 @@ export function routeFileStorage(fastify: FastifyInstance, options: FileStorageO
   }
 }
 
+export {devUserAuth} from './auth';
+export type {UserAuth} from './auth';
 export type {FileStorageOptions, AuthProvider};

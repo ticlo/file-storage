@@ -2,8 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import {join, dirname} from 'path';
 import {fileURLToPath} from 'url';
-import {routeFileStorage} from '../src';
-import {devUserAuth} from '../src/auth';
+import {routeFileStorage, devUserAuth} from '@ticlo/file-server';
 import {registerSessionRoutes} from './session';
 
 const __filename = fileURLToPath(import.meta.url);
