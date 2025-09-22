@@ -1,19 +1,15 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import {join, dirname} from 'path';
-import {fileURLToPath} from 'url';
+import {join} from 'path';
 import {routeFileStorage, devUserAuth} from '@ticlo/file-server';
 import {registerSessionRoutes} from './session';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const fastify = Fastify({
   logger: true,
 });
 
 routeFileStorage(fastify, {
-  rootDir: join(__dirname, '..', 'files'),
+  rootDir: join(process.cwd(), 'files'),
   authProvider: () => devUserAuth,
 });
 
@@ -21,7 +17,7 @@ registerSessionRoutes(fastify);
 
 const registerStaticFiles = async () => {
   await fastify.register(fastifyStatic, {
-    root: join(__dirname, '..', 'www'),
+    root: join(process.cwd(), 'www'),
     prefix: '/',
     wildcard: true,
   });

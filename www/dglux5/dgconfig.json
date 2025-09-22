@@ -3,8 +3,8 @@
   "viewerUrl": "viewer.html",
   "dataUrl": "data",
   "userUrl": "user",
-  "assetUrl": "file",
-  "sessionUrl": "session",
+  "assetUrl": "../file",
+  "sessionUrl": "../session",
   "dbUrl": "db",
-  "logoutUrl": "logout"
+  "logoutUrl": "../logout"
 }

@@ -1,0 +1,23 @@
+{
+  "dglux": {
+    "type": "ticlo",
+    "dist": "Ticlo",
+    "productId": "ticlo-local-dev",
+    "hosts": ["localhost:8047", "localhost:3001"],
+    "paths": ["/dglux5"],
+    "projs": ["*"],
+    "config": {
+      "indexUrl": "index.html",
+      "viewerUrl": "viewer.html",
+      "dataUrl": "data",
+      "userUrl": "user",
+      "assetUrl": "../file",
+      "sessionUrl": "../session",
+      "dbUrl": "db",
+      "logoutUrl": "../logout"
+    },
+    "maintenance": "2043-11-07T18:18:00.000Z",
+    "hash": "NzApKzcnPCc6OD48"
+  },
+  "sig": "D9MMDFcsOfhkUNeTNOy+xXLOAH1SKJ7eB6iY5pDHqKY90006DxgBW+ueRViaopD3B8k95QZ0uWNDB87NJk3ANtNVAOOncxm0HNy1CZkh1kxwGepjU1DEPSy8GyvIB6ql3XBD8j/8fSYIXELstu4hW2tJXTUSCW0jfJTuFsvqf7fQPvl7HTZKQDoApuQZUsOqnwYK5pBPLtNvz0jZe0+rrg=="
+}

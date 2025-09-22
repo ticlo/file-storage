@@ -1,4 +1,3 @@
-import {randomBytes} from 'node:crypto';
 import type {Dirent} from 'node:fs';
 import {constants as fsConstants, promises as fs} from 'node:fs';
 import path from 'node:path';
@@ -154,7 +153,7 @@ function normalizeProjectIdFromName(rawName: string): string {
 async function generateUniqueProjectId(baseDir: string, desiredId: string): Promise<string> {
   let candidate = desiredId;
   while (await projectDirectoryExists(baseDir, candidate)) {
-    candidate = `${desiredId}_${randomBytes(3).toString('hex')}`;
+    candidate = `${desiredId}_${Math.random().toString(36).substring(2, 6)}`;
   }
   return candidate;
 }
