@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "app/**/*",
-    "packages/file-server/src/**/*"
+    "packages/file-server/src/**/*",
+    "packages/file-client/src/**/*"
   ]
 }

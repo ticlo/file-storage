@@ -2,8 +2,6 @@
   "name": "@ticlo/file-server",
   "version": "0.0.1",
   "type": "module",
-  "main": "src/index.js",
-  "types": "src/index.ts",
   "files": [
     "src",
     "dist"

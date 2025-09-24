@@ -1,0 +1,304 @@
+import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults} from 'axios';
+import type {ExistsBehavior, FileEntry, FileInfo, ProjectMetadata} from './types';
+
+type HttpMethod = 'GET' | 'POST';
+
+type UploadPayload = Uint8Array | string | Blob;
+
+type ImportPayload = Uint8Array | Blob;
+
+interface UploadOptions {
+  existsBehavior?: ExistsBehavior;
+  crc?: string;
+}
+
+class TicloFileClient {
+  private readonly axiosInstance: AxiosInstance;
+
+  constructor(config?: CreateAxiosDefaults, axiosInstance?: AxiosInstance) {
+    if (axiosInstance) {
+      const baseURL = normalizeBaseUrl(axiosInstance.defaults.baseURL);
+      axiosInstance.defaults.baseURL = baseURL;
+      this.axiosInstance = axiosInstance;
+      return;
+    }
+
+    const baseURL = normalizeBaseUrl(config?.baseURL);
+    const axiosConfig: CreateAxiosDefaults = config ? {...config, baseURL} : {baseURL};
+    this.axiosInstance = axios.create(axiosConfig);
+  }
+
+  async getFile(path: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ArrayBuffer>> {
+    const normalizedPath = normalizeFilePath(path);
+    const {params: _params, ...restConfig} = config;
+    const responseType = restConfig.responseType ?? 'arraybuffer';
+    return this.axiosInstance.request<ArrayBuffer>({
+      ...restConfig,
+      method: 'GET',
+      url: normalizedPath,
+      responseType,
+    });
+  }
+
+  async listFiles(path: string, config?: AxiosRequestConfig): Promise<FileEntry[]> {
+    return this.requestOp<FileEntry[]>('GET', 'list', {path: normalizeOpPath(path)}, undefined, config);
+  }
+
+  async getFileInfo(path: string, config?: AxiosRequestConfig): Promise<FileInfo> {
+    return this.requestOp<FileInfo>('GET', 'info', {path: normalizeOpPath(path)}, undefined, config);
+  }
+
+  async uploadFile(
+    path: string,
+    payload: UploadPayload,
+    options: UploadOptions = {},
+    config?: AxiosRequestConfig
+  ): Promise<string> {
+    const query: Record<string, unknown> = {path: normalizeOpPath(path)};
+    if (options.existsBehavior === 'fail') {
+      query.exists = 'fail';
+    }
+    if (options.crc) {
+      query.crc = options.crc;
+    }
+    const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/octet-stream'});
+    return this.requestOp<string>('POST', 'upload', query, payload, mergedConfig);
+  }
+
+  async createDirectory(path: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>('POST', 'mkdir', {path: normalizeOpPath(path)}, undefined, config);
+  }
+
+  async deleteFile(path: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>('POST', 'delete', {path: normalizeOpPath(path)}, undefined, config);
+  }
+
+  async moveFile(sourcePath: string, destinationPath: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>(
+      'POST',
+      'move',
+      {
+        path: normalizeOpPath(sourcePath),
+        dest: normalizeOpPath(destinationPath),
+      },
+      undefined,
+      config
+    );
+  }
+
+  async copyFile(sourcePath: string, destinationPath: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>(
+      'POST',
+      'copy',
+      {
+        path: normalizeOpPath(sourcePath),
+        dest: normalizeOpPath(destinationPath),
+      },
+      undefined,
+      config
+    );
+  }
+
+  async renameFile(path: string, name: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>(
+      'POST',
+      'rename',
+      {
+        path: normalizeOpPath(path),
+        name: normalizeEntryName(name),
+      },
+      undefined,
+      config
+    );
+  }
+
+  async listProjects(config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
+    return this.requestOp<ProjectMetadata[]>('GET', 'listProj', {}, undefined, config);
+  }
+
+  async readProject(id: string, config?: AxiosRequestConfig): Promise<ProjectMetadata> {
+    return this.requestOp<ProjectMetadata>('GET', 'readProj', {id: normalizeIdentifier(id)}, undefined, config);
+  }
+
+  async createProject(name: string, templateId: string, config?: AxiosRequestConfig): Promise<ProjectMetadata> {
+    const query = {
+      name: validateProjectName(name),
+      template: normalizeIdentifier(templateId),
+    };
+    return this.requestOp<ProjectMetadata>('POST', 'createProj', query, undefined, config);
+  }
+
+  async updateProject(
+    id: string,
+    metadata: Record<string, unknown>,
+    config?: AxiosRequestConfig
+  ): Promise<ProjectMetadata> {
+    const body = JSON.stringify(metadata ?? {});
+    const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/json'});
+    return this.requestOp<ProjectMetadata>('POST', 'updateProj', {id: normalizeIdentifier(id)}, body, mergedConfig);
+  }
+
+  async deleteProject(id: string, config?: AxiosRequestConfig): Promise<void> {
+    await this.requestOp<void>('POST', 'deleteProj', {id: normalizeIdentifier(id)}, undefined, config);
+  }
+
+  async exportProject(id: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ArrayBuffer>> {
+    const {params: configParams, responseType, ...restConfig} = config;
+    const params = mergeQuery(configParams, 'exportProj', {id: normalizeIdentifier(id)});
+    const finalConfig: AxiosRequestConfig = {
+      ...restConfig,
+      method: 'POST',
+      url: '',
+      params,
+      responseType: responseType ?? 'arraybuffer',
+    };
+    return this.axiosInstance.request<ArrayBuffer>(finalConfig);
+  }
+
+  async importProjects(payload: ImportPayload, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
+    const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/zip'});
+    return this.requestOp<ProjectMetadata[]>('POST', 'importProj', {}, payload, mergedConfig);
+  }
+
+  private async requestOp<T>(
+    method: HttpMethod,
+    op: string,
+    query: Record<string, unknown> = {},
+    data?: unknown,
+    config: AxiosRequestConfig = {}
+  ): Promise<T> {
+    const {params: configParams, data: configData, ...restConfig} = config;
+    const params = mergeQuery(configParams, op, query);
+    const finalConfig: AxiosRequestConfig = {
+      ...restConfig,
+      method,
+      url: '',
+      params,
+      data: data ?? configData,
+    };
+    const response = await this.axiosInstance.request<T>(finalConfig);
+    return response.data;
+  }
+}
+
+function normalizeBaseUrl(baseUrl?: string): string {
+  if (!baseUrl) {
+    return '/file';
+  }
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return '/file';
+  }
+  const withoutTrailing = trimmed.replace(/\/+$/, '');
+  return withoutTrailing || '/file';
+}
+
+function normalizeFilePath(path: string): string {
+  const normalized = normalizeOpPath(path);
+  return normalized
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function normalizeOpPath(path: string): string {
+  if (typeof path !== 'string') {
+    throw new TypeError('Path is required');
+  }
+  const trimmed = path.trim().replace(/^\/+/, '');
+  if (!trimmed) {
+    throw new TypeError('Path is required');
+  }
+  return trimmed;
+}
+
+function normalizeIdentifier(value: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Identifier is required');
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError('Identifier is required');
+  }
+  return trimmed;
+}
+
+function normalizeEntryName(name: string): string {
+  if (typeof name !== 'string') {
+    throw new TypeError('Name is required');
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new TypeError('Name is required');
+  }
+  if (trimmed.includes('/') || trimmed.includes(String.fromCharCode(92))) {
+    throw new TypeError('Name cannot contain path separators');
+  }
+  return trimmed;
+}
+
+function validateProjectName(name: string): string {
+  if (typeof name !== 'string') {
+    throw new TypeError('Project name is required');
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new TypeError('Project name is required');
+  }
+  return trimmed;
+}
+
+function mergeQuery(
+  existingParams: AxiosRequestConfig['params'],
+  op: string,
+  query: Record<string, unknown>
+): Record<string, string> {
+  const params: Record<string, string> = {};
+
+  if (existingParams instanceof URLSearchParams) {
+    existingParams.forEach((value, key) => {
+      params[key] = value;
+    });
+  } else if (existingParams && typeof existingParams === 'object') {
+    for (const [key, value] of Object.entries(existingParams as Record<string, unknown>)) {
+      if (value !== undefined && value !== null) {
+        params[key] = String(value);
+      }
+    }
+  }
+
+  params.op = op;
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    params[key] = typeof value === 'string' ? value : String(value);
+  }
+
+  return params;
+}
+
+function mergeHeaders(config: AxiosRequestConfig | undefined, headers: Record<string, string>): AxiosRequestConfig {
+  if (!config) {
+    return {headers};
+  }
+  const existingHeaders = config.headers
+    ? config.headers instanceof axios.AxiosHeaders
+      ? config.headers.toJSON()
+      : {...config.headers}
+    : {};
+  const mergedHeaders = {...headers, ...existingHeaders};
+  return {
+    ...config,
+    headers: mergedHeaders,
+  };
+}
+
+function isAxiosInstance(value: unknown): value is AxiosInstance {
+  return !!value && typeof (value as AxiosInstance).request === 'function';
+}
+
+export type {UploadOptions, UploadPayload, ImportPayload};
+export {TicloFileClient};
