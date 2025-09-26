@@ -143,20 +143,26 @@ class TicloFileClient {
   }
 
   async exportProject(id: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ArrayBuffer>> {
-    const {params: configParams, responseType, ...restConfig} = config;
+    const {params: configParams, responseType, headers: configHeaders, ...restConfig} = config;
     const params = mergeQuery(configParams, 'exportProj', {id: normalizeIdentifier(id)});
+    const headerSource = configHeaders ? {headers: configHeaders} : undefined;
+    const mergedHeaders = mergeHeaders(headerSource, {'Content-Type': 'application/json'}).headers;
     const finalConfig: AxiosRequestConfig = {
       ...restConfig,
       method: 'POST',
       url: '',
       params,
       responseType: responseType ?? 'arraybuffer',
+      data: null,
     };
+    if (mergedHeaders) {
+      finalConfig.headers = mergedHeaders;
+    }
     return this.axiosInstance.request<ArrayBuffer>(finalConfig);
   }
 
   async importProjects(payload: ImportPayload, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
-    const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/zip'});
+    const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/octet-stream'});
     return this.requestOp<ProjectMetadata[]>('POST', 'importProj', {}, payload, mergedConfig);
   }
 
@@ -167,15 +173,44 @@ class TicloFileClient {
     data?: unknown,
     config: AxiosRequestConfig = {}
   ): Promise<T> {
-    const {params: configParams, data: configData, ...restConfig} = config;
+    const {params: configParams, data: configData, headers: configHeaders, ...restConfig} = config;
     const params = mergeQuery(configParams, op, query);
+
+    let finalData = data ?? configData;
+    const normalizeHeaders = (headers?: AxiosRequestConfig['headers']): Record<string, string> | undefined => {
+      if (!headers) {
+        return undefined;
+      }
+      return headers instanceof axios.AxiosHeaders ? headers.toJSON() : {...headers};
+    };
+
+    let finalHeaders = normalizeHeaders(configHeaders);
+
+    if (method === 'POST') {
+      if (finalData === undefined) {
+        finalData = null;
+      }
+      if (!finalHeaders) {
+        finalHeaders = {};
+      }
+      const hasContentType = Object.keys(finalHeaders).some((key) => key.toLowerCase() === 'content-type');
+      if (!hasContentType) {
+        finalHeaders['Content-Type'] = 'application/json';
+      }
+    }
+
     const finalConfig: AxiosRequestConfig = {
       ...restConfig,
       method,
       url: '',
       params,
-      data: data ?? configData,
+      data: finalData,
     };
+
+    if (finalHeaders) {
+      finalConfig.headers = finalHeaders;
+    }
+
     const response = await this.axiosInstance.request<T>(finalConfig);
     return response.data;
   }

@@ -1,0 +1,14 @@
+{
+    "id":  "testProject1",
+    "name":  "Test Project 1",
+    "owner":  "admin",
+    "canRead":  [
+
+                ],
+    "isTemplate":  true,
+    "category":  "templates",
+    "canWrite":  [
+
+                 ]
+}
+
