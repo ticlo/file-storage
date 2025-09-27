@@ -1,6 +1,6 @@
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {TicloFileClient} from '@ticlo/file-client';
-import {crc32} from '../../../packages/file-server/src/fileOperations';
+import {crc32} from '../../packages/file-server/src/fileOperations';
 import type {TestServer} from '../utils/testServer';
 import {startFileServer} from '../utils/testServer';
 

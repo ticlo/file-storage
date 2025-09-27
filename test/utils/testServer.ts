@@ -1,5 +1,5 @@
 import Fastify, {type FastifyInstance} from 'fastify';
-import {devUserAuth, routeFileStorage} from '@ticlo/file-server';
+import type {FileStorageOptions} from '@ticlo/file-server';
 import {cp, mkdtemp, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
@@ -13,10 +13,14 @@ export interface TestServer {
   close(): Promise<void>;
 }
 
+export interface StartServerOptions {
+  enableCors?: boolean;
+}
+
 async function createWorkspaceFromFixtures(): Promise<string> {
   const workspaceDir = await mkdtemp(join(tmpdir(), 'ticlo-file-tests-'));
   const moduleDir = fileURLToPath(new URL('.', import.meta.url));
-  const fixturesDir = resolve(moduleDir, '../../files');
+  const fixturesDir = resolve(moduleDir, '../files');
   const entries = await readdir(fixturesDir);
   await Promise.all(
     entries.map(async (entry) => {
@@ -28,23 +32,44 @@ async function createWorkspaceFromFixtures(): Promise<string> {
   return workspaceDir;
 }
 
-export async function startFileServer(): Promise<TestServer> {
+export async function startFileServer(options: StartServerOptions = {}): Promise<TestServer> {
   const workspaceDir = await createWorkspaceFromFixtures();
   const fastify = Fastify({logger: false});
 
-  try {
-    routeFileStorage(fastify, {
-      rootDir: workspaceDir,
-      authProvider: () => devUserAuth,
+  if (options.enableCors) {
+    fastify.addHook('onSend', async (_request, reply, payload) => {
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.header('Access-Control-Allow-Headers', 'content-type,x-requested-with');
+      reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+      return payload;
     });
+
+    fastify.options('*', async (_request, reply) => {
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.header('Access-Control-Allow-Headers', 'content-type,x-requested-with');
+      reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+      reply.status(204).send();
+    });
+  }
+
+  const {devUserAuth, routeFileStorage} = await import('@ticlo/file-server');
+
+  try {
+    routeFileStorage(
+      fastify,
+      {
+        rootDir: workspaceDir,
+        authProvider: () => devUserAuth,
+      } satisfies FileStorageOptions
+    );
 
     await fastify.listen({port: 0, host: '127.0.0.1'});
     const address = fastify.server.address();
     if (!address || typeof address === 'string') {
       throw new Error('Unable to determine server address');
     }
-    const {port} = address;
-    const baseUrl = `http://127.0.0.1:${port}/file`;
+    const {port} = address as AddressInfo;
+    const baseUrl = "http://127.0.0.1:" + port + "/file";
 
     let closed = false;
     const close = async () => {
