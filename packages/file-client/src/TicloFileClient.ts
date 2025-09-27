@@ -1,12 +1,6 @@
 import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults} from 'axios';
 import type {ExistsBehavior, FileEntry, FileInfo, ProjectMetadata} from './types';
 
-type HttpMethod = 'GET' | 'POST';
-
-type UploadPayload = Uint8Array | string | Blob;
-
-type ImportPayload = Uint8Array | Blob;
-
 interface UploadOptions {
   existsBehavior?: ExistsBehavior;
   crc?: string;
@@ -17,14 +11,11 @@ class TicloFileClient {
 
   constructor(config?: CreateAxiosDefaults, axiosInstance?: AxiosInstance) {
     if (axiosInstance) {
-      const baseURL = normalizeBaseUrl(axiosInstance.defaults.baseURL);
-      axiosInstance.defaults.baseURL = baseURL;
       this.axiosInstance = axiosInstance;
       return;
     }
 
-    const baseURL = normalizeBaseUrl(config?.baseURL);
-    const axiosConfig: CreateAxiosDefaults = config ? {...config, baseURL} : {baseURL};
+    const axiosConfig: CreateAxiosDefaults = config ?? {baseURL: '/file'};
     this.axiosInstance = axios.create(axiosConfig);
   }
 
@@ -50,7 +41,7 @@ class TicloFileClient {
 
   async uploadFile(
     path: string,
-    payload: UploadPayload,
+    payload: Uint8Array | string | Blob,
     options: UploadOptions = {},
     config?: AxiosRequestConfig
   ): Promise<string> {
@@ -161,13 +152,13 @@ class TicloFileClient {
     return this.axiosInstance.request<ArrayBuffer>(finalConfig);
   }
 
-  async importProjects(payload: ImportPayload, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
+  async importProjects(payload: Uint8Array | Blob, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
     const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/octet-stream'});
     return this.requestOp<ProjectMetadata[]>('POST', 'importProj', {}, payload, mergedConfig);
   }
 
   private async requestOp<T>(
-    method: HttpMethod,
+    method: 'GET' | 'POST',
     op: string,
     query: Record<string, unknown> = {},
     data?: unknown,
@@ -214,18 +205,6 @@ class TicloFileClient {
     const response = await this.axiosInstance.request<T>(finalConfig);
     return response.data;
   }
-}
-
-function normalizeBaseUrl(baseUrl?: string): string {
-  if (!baseUrl) {
-    return '/file';
-  }
-  const trimmed = baseUrl.trim();
-  if (!trimmed) {
-    return '/file';
-  }
-  const withoutTrailing = trimmed.replace(/\/+$/, '');
-  return withoutTrailing || '/file';
 }
 
 function normalizeFilePath(path: string): string {
@@ -331,9 +310,5 @@ function mergeHeaders(config: AxiosRequestConfig | undefined, headers: Record<st
   };
 }
 
-function isAxiosInstance(value: unknown): value is AxiosInstance {
-  return !!value && typeof (value as AxiosInstance).request === 'function';
-}
-
-export type {UploadOptions, UploadPayload, ImportPayload};
+export type {UploadOptions};
 export {TicloFileClient};
