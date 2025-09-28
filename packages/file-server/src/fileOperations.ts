@@ -1,12 +1,13 @@
 import {createReadStream} from 'node:fs';
 import {constants as fsConstants, promises as fs} from 'node:fs';
 import path from 'node:path';
-import type {FastifyReply, FastifyRequest} from 'fastify';
+import type {FastifyBaseLogger, FastifyReply, FastifyRequest} from 'fastify';
 import type {UserAuth} from './auth';
 import {lookUpMimeType} from './mimeTypes';
-import {AuthProvider, StorageError, StoragePath, StorageScope} from './types';
+import {buildEtag, handleErrors, normalizeInput, toPosix} from './utils';
+import {AuthProvider, FileQuerystring, StorageError, StoragePath, StorageScope} from './types';
 
-const {stat, readdir, mkdir, access} = fs;
+const {stat, readdir, mkdir, access, rename, rm, copyFile, writeFile} = fs;
 
 const CRC32_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -24,23 +25,10 @@ const CRC32_TABLE = (() => {
   return table;
 })();
 
-function toPosix(partial: string[]): string {
-  return partial.filter(Boolean).join('/');
-}
-
-function normalizeInput(rawPath?: string): string {
-  if (!rawPath) {
-    throw new StorageError('Path is required', 400);
-  }
-  const trimmed = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
-  const normalized = path.posix.normalize(trimmed);
-  if (!normalized || normalized === '.') {
-    throw new StorageError('Path is required', 400);
-  }
-  if (normalized.includes('..')) {
-    throw new StorageError('Path cannot contain parent segments', 400);
-  }
-  return normalized;
+interface FileRouteContext {
+  rootDir: string;
+  authProvider: AuthProvider;
+  logger: FastifyBaseLogger;
 }
 
 function buildStoragePath(rawPath: string, baseDir: string): StoragePath {
@@ -101,10 +89,7 @@ async function ensureWrite(auth: UserAuth, projectId: string): Promise<void> {
   }
 }
 
-function buildEtag(info: {mtimeMs: number; size: number}): string {
-  const modified = Math.trunc(info.mtimeMs);
-  return `W/"${info.size}-${modified}"`;
-}
+
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -264,6 +249,271 @@ async function ensureParentDirectory(filePath: string): Promise<void> {
   const directory = path.dirname(filePath);
   await mkdir(directory, {recursive: true});
 }
+async function resolveStorageContext(
+  rawPath: string,
+  request: FastifyRequest,
+  context: FileRouteContext
+): Promise<{storage: StoragePath; auth: UserAuth}> {
+  const storage = buildStoragePath(rawPath, context.rootDir);
+  const auth = await resolveAuth(context.authProvider, request);
+  return {storage, auth};
+}
+
+async function handleFileDownload(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  rawPath: string,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    const {storage, auth} = await resolveStorageContext(rawPath, request, context);
+    await ensureRead(auth, storage.id);
+    let info;
+    try {
+      info = await stat(storage.absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('File not found', 404);
+      }
+      throw error;
+    }
+    if (info.isDirectory()) {
+      throw new StorageError('Requested path is a directory', 400);
+    }
+    return sendFileReply(request, reply, storage, info);
+  }, context.logger);
+}
+
+async function handleGetOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  if (!query.path) {
+    reply.code(400).send({message: 'Path is required'});
+    return;
+  }
+  await handleFileDownload(request, reply, query.path, context);
+}
+
+async function handleListOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path) {
+      throw new StorageError('Path is required', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureRead(auth, storage.id);
+    return listDirectory(storage);
+  }, context.logger);
+}
+
+async function handleInfoOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path) {
+      throw new StorageError('Path is required', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureRead(auth, storage.id);
+    try {
+      return await describeFile(storage);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('File not found', 404);
+      }
+      throw error;
+    }
+  }, context.logger);
+}
+
+async function handleUploadOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path) {
+      throw new StorageError('Path is required', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureWrite(auth, storage.id);
+    await ensureParentDirectory(storage.absolute);
+    const exists = await fileExists(storage.absolute);
+    if (query.exists === 'fail' && exists) {
+      throw new StorageError('File already exists', 409);
+    }
+    const buffer = await streamToBuffer(request);
+    if (query.crc) {
+      const computed = crc32(buffer).toString(16).padStart(8, '0');
+      if (computed !== query.crc.toLowerCase()) {
+        throw new StorageError('CRC mismatch', 412);
+      }
+    }
+    await writeFile(storage.absolute, buffer);
+    reply.type('text/plain; charset=utf-8');
+    return Buffer.byteLength(buffer).toString();
+  }, context.logger);
+}
+
+async function handleMkdirOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path) {
+      throw new StorageError('Path is required', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureWrite(auth, storage.id);
+    await mkdir(storage.absolute, {recursive: true});
+    return undefined;
+  }, context.logger);
+}
+
+async function handleDeleteOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path) {
+      throw new StorageError('Path is required', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureWrite(auth, storage.id);
+    try {
+      await rm(storage.absolute, {recursive: true, force: false});
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('File not found', 404);
+      }
+      throw error;
+    }
+    return undefined;
+  }, context.logger);
+}
+
+async function handleMoveOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path || !query.dest) {
+      throw new StorageError('Source and destination paths are required', 400);
+    }
+    const {storage: source, auth} = await resolveStorageContext(query.path, request, context);
+    const destination = buildStoragePath(query.dest, context.rootDir);
+    if (source.scope !== destination.scope || source.id !== destination.id) {
+      throw new StorageError('Move must remain within the same scope and identifier', 400);
+    }
+    await ensureWrite(auth, source.id);
+    await ensureParentDirectory(destination.absolute);
+    try {
+      await rename(source.absolute, destination.absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('Source file not found', 404);
+      }
+      throw error;
+    }
+    return undefined;
+  }, context.logger);
+}
+
+async function handleCopyOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path || !query.dest) {
+      throw new StorageError('Source and destination paths are required', 400);
+    }
+    const {storage: source, auth} = await resolveStorageContext(query.path, request, context);
+    const destination = buildStoragePath(query.dest, context.rootDir);
+    if (source.scope !== destination.scope || source.id !== destination.id) {
+      throw new StorageError('Copy must remain within the same scope and identifier', 400);
+    }
+    await ensureWrite(auth, source.id);
+    await ensureParentDirectory(destination.absolute);
+    try {
+      const info = await stat(source.absolute);
+      if (info.isDirectory()) {
+        throw new StorageError('Copy does not support directories', 400);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('Source file not found', 404);
+      }
+      throw error;
+    }
+    await copyFile(source.absolute, destination.absolute);
+    return undefined;
+  }, context.logger);
+}
+
+async function handleRenameOp(
+  query: FileQuerystring,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  context: FileRouteContext
+): Promise<void> {
+  await handleErrors(reply, async () => {
+    if (!query.path || !query.name) {
+      throw new StorageError('Path and name are required', 400);
+    }
+    const sanitized = query.name.replace(/\\/g, '/');
+    if (!sanitized || sanitized.includes('/') || sanitized === '.' || sanitized === '..') {
+      throw new StorageError('Invalid name parameter', 400);
+    }
+    const {storage, auth} = await resolveStorageContext(query.path, request, context);
+    await ensureWrite(auth, storage.id);
+    const destinationPath = path.join(path.dirname(storage.absolute), sanitized);
+    const relativeToProject = path
+      .relative(storage.projectRoot, destinationPath)
+      .split(path.sep)
+      .join('/');
+    if (relativeToProject.startsWith('..')) {
+      throw new StorageError('Rename target escapes project root', 400);
+    }
+    const cleanedRelative = relativeToProject === '.' ? '' : relativeToProject;
+    const destination: StoragePath = {
+      scope: storage.scope,
+      id: storage.id,
+      relative: cleanedRelative,
+      absolute: destinationPath,
+      projectRoot: storage.projectRoot,
+      posixPath: toPosix([storage.scope, storage.id, cleanedRelative]),
+    };
+    await ensureParentDirectory(destination.absolute);
+    try {
+      await rename(storage.absolute, destination.absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new StorageError('Source entry not found', 404);
+      }
+      throw error;
+    }
+    return undefined;
+  }, context.logger);
+}
 
 export {
   buildEtag,
@@ -274,11 +524,20 @@ export {
   ensureRead,
   ensureWrite,
   fileExists,
+  handleFileDownload,
+  handleGetOp,
+  handleListOp,
+  handleInfoOp,
+  handleUploadOp,
+  handleMkdirOp,
+  handleDeleteOp,
+  handleMoveOp,
+  handleCopyOp,
+  handleRenameOp,
   listDirectory,
-  normalizeInput,
   resolveAuth,
+  resolveStorageContext,
   sendFileReply,
   streamToBuffer,
-  toPosix,
 };
-export type {StoragePath};
+export type {FileRouteContext, StoragePath};
