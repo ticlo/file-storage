@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @ticlo/file-server run build",
+    "build": "pnpm --filter @ticlo/file-server run build && pnpm --filter @ticlo/file-client run build",
     "dev": "tsx watch app/index.ts",
     "lint": "eslint \"packages/file-server/src/**/*.ts\" \"packages/file-client/src/**/*.ts\" \"app/**/*.ts\"",
     "lint:fix": "eslint --fix \"packages/file-server/src/**/*.ts\" \"packages/file-client/src/**/*.ts\" \"app/**/*.ts\"",

@@ -1,4 +1,10 @@
-import axios, {AxiosInstance, AxiosRequestConfig, AxiosResponse, CreateAxiosDefaults} from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  CreateAxiosDefaults,
+  type AxiosHeaderValue,
+} from 'axios';
 import type {ExistsBehavior, FileEntry, FileInfo, ProjectMetadata} from './types';
 
 interface UploadOptions {
@@ -6,16 +12,20 @@ interface UploadOptions {
   crc?: string;
 }
 
+type UploadPayload = Uint8Array | string | Blob;
+type ImportPayload = Uint8Array | Blob;
+type TicloFileClientOptions = CreateAxiosDefaults;
+
 class TicloFileClient {
   private readonly axiosInstance: AxiosInstance;
 
-  constructor(config?: CreateAxiosDefaults, axiosInstance?: AxiosInstance) {
+  constructor(config?: TicloFileClientOptions, axiosInstance?: AxiosInstance) {
     if (axiosInstance) {
       this.axiosInstance = axiosInstance;
       return;
     }
 
-    const axiosConfig: CreateAxiosDefaults = config ?? {baseURL: '/file'};
+    const axiosConfig: TicloFileClientOptions = config ?? {baseURL: '/file'};
     this.axiosInstance = axios.create(axiosConfig);
   }
 
@@ -41,7 +51,7 @@ class TicloFileClient {
 
   async uploadFile(
     path: string,
-    payload: Uint8Array | string | Blob,
+    payload: UploadPayload,
     options: UploadOptions = {},
     config?: AxiosRequestConfig
   ): Promise<string> {
@@ -152,7 +162,7 @@ class TicloFileClient {
     return this.axiosInstance.request<ArrayBuffer>(finalConfig);
   }
 
-  async importProjects(payload: Uint8Array | Blob, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
+  async importProjects(payload: ImportPayload, config?: AxiosRequestConfig): Promise<ProjectMetadata[]> {
     const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/octet-stream'});
     return this.requestOp<ProjectMetadata[]>('POST', 'importProj', {}, payload, mergedConfig);
   }
@@ -168,11 +178,14 @@ class TicloFileClient {
     const params = mergeQuery(configParams, op, query);
 
     let finalData = data ?? configData;
-    const normalizeHeaders = (headers?: AxiosRequestConfig['headers']): Record<string, string> | undefined => {
+    const normalizeHeaders = (
+      headers?: AxiosRequestConfig['headers']
+    ): Record<string, AxiosHeaderValue> | undefined => {
       if (!headers) {
         return undefined;
       }
-      return headers instanceof axios.AxiosHeaders ? headers.toJSON() : {...headers};
+      const normalized = axios.AxiosHeaders.from(headers).toJSON();
+      return normalized as Record<string, AxiosHeaderValue>;
     };
 
     let finalHeaders = normalizeHeaders(configHeaders);
@@ -182,7 +195,7 @@ class TicloFileClient {
         finalData = null;
       }
       if (!finalHeaders) {
-        finalHeaders = {};
+        finalHeaders = {} as Record<string, AxiosHeaderValue>;
       }
       const hasContentType = Object.keys(finalHeaders).some((key) => key.toLowerCase() === 'content-type');
       if (!hasContentType) {
@@ -294,21 +307,23 @@ function mergeQuery(
   return params;
 }
 
-function mergeHeaders(config: AxiosRequestConfig | undefined, headers: Record<string, string>): AxiosRequestConfig {
-  if (!config) {
-    return {headers};
+function mergeHeaders(
+  config: AxiosRequestConfig | undefined,
+  headers: Record<string, AxiosHeaderValue>
+): AxiosRequestConfig {
+  const baseHeaders = axios.AxiosHeaders.from(config?.headers);
+  for (const [key, value] of Object.entries(headers)) {
+    baseHeaders.set(key, value);
   }
-  const existingHeaders = config.headers
-    ? config.headers instanceof axios.AxiosHeaders
-      ? config.headers.toJSON()
-      : {...config.headers}
-    : {};
-  const mergedHeaders = {...headers, ...existingHeaders};
+  const mergedHeaders = baseHeaders.toJSON() as Record<string, AxiosHeaderValue>;
+  if (!config) {
+    return {headers: mergedHeaders};
+  }
   return {
     ...config,
     headers: mergedHeaders,
   };
 }
 
-export type {UploadOptions};
+export type {ImportPayload, TicloFileClientOptions, UploadOptions, UploadPayload};
 export {TicloFileClient};

@@ -265,7 +265,7 @@ async function handleFileDownload(
   rawPath: string,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<unknown> => {
     const {storage, auth} = await resolveStorageContext(rawPath, request, context);
     await ensureRead(auth, storage.id);
     let info;
@@ -303,7 +303,7 @@ async function handleListOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<unknown[]> => {
     if (!query.path) {
       throw new StorageError('Path is required', 400);
     }
@@ -319,7 +319,7 @@ async function handleInfoOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<unknown> => {
     if (!query.path) {
       throw new StorageError('Path is required', 400);
     }
@@ -342,7 +342,7 @@ async function handleUploadOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<string> => {
     if (!query.path) {
       throw new StorageError('Path is required', 400);
     }
@@ -372,7 +372,7 @@ async function handleMkdirOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<void> => {
     if (!query.path) {
       throw new StorageError('Path is required', 400);
     }
@@ -389,7 +389,7 @@ async function handleDeleteOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<void> => {
     if (!query.path) {
       throw new StorageError('Path is required', 400);
     }
@@ -413,7 +413,7 @@ async function handleMoveOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<void> => {
     if (!query.path || !query.dest) {
       throw new StorageError('Source and destination paths are required', 400);
     }
@@ -442,7 +442,7 @@ async function handleCopyOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<void> => {
     if (!query.path || !query.dest) {
       throw new StorageError('Source and destination paths are required', 400);
     }
@@ -475,7 +475,7 @@ async function handleRenameOp(
   reply: FastifyReply,
   context: FileRouteContext
 ): Promise<void> {
-  await handleErrors(reply, async () => {
+  await handleErrors(reply, async (): Promise<void> => {
     if (!query.path || !query.name) {
       throw new StorageError('Path and name are required', 400);
     }
