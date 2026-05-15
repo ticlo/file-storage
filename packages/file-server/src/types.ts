@@ -1,7 +1,8 @@
-import type {FastifyRequest} from 'fastify';
+import type {Context} from 'hono';
 import type {UserAuth} from './auth';
 
-type AuthProvider = (request: FastifyRequest) => UserAuth | Promise<UserAuth>;
+type StorageContext = Context;
+type AuthProvider = (request: StorageContext) => UserAuth | Promise<UserAuth>;
 
 interface FileQuerystring {
   op?: string;
@@ -44,5 +45,13 @@ class StorageError extends Error {
   }
 }
 
-export type {AuthProvider, FileQuerystring, FileStorageOptions, ProjectMetadata, StoragePath, StorageScope};
+export type {
+  AuthProvider,
+  FileQuerystring,
+  FileStorageOptions,
+  ProjectMetadata,
+  StorageContext,
+  StoragePath,
+  StorageScope,
+};
 export {StorageError};

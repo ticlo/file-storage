@@ -1,13 +1,15 @@
-import Fastify, {type FastifyInstance} from 'fastify';
+import {serve, type ServerType} from '@hono/node-server';
 import type {FileStorageOptions} from '@ticlo/file-server';
+import {Hono} from 'hono';
 import {cp, mkdtemp, readdir, rm} from 'node:fs/promises';
+import type {AddressInfo} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import type {AddressInfo} from 'node:net';
 
 export interface TestServer {
-  fastify: FastifyInstance;
+  app: Hono;
+  server: ServerType;
   baseUrl: string;
   workspaceDir: string;
   close(): Promise<void>;
@@ -32,44 +34,61 @@ async function createWorkspaceFromFixtures(): Promise<string> {
   return workspaceDir;
 }
 
+function addCors(app: Hono): void {
+  app.use('*', async (context, next) => {
+    if (context.req.method === 'OPTIONS') {
+      context.header('Access-Control-Allow-Origin', '*');
+      context.header('Access-Control-Allow-Headers', 'content-type,x-requested-with');
+      context.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+      return context.body(null, 204);
+    }
+    await next();
+    context.res.headers.set('Access-Control-Allow-Origin', '*');
+    context.res.headers.set('Access-Control-Allow-Headers', 'content-type,x-requested-with');
+    context.res.headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  });
+}
+
+function closeServer(server: ServerType): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((err?: Error) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 export async function startFileServer(options: StartServerOptions = {}): Promise<TestServer> {
   const workspaceDir = await createWorkspaceFromFixtures();
-  const fastify = Fastify({logger: false});
+  const app = new Hono();
 
   if (options.enableCors) {
-    fastify.addHook('onSend', async (_request, reply, payload) => {
-      reply.header('Access-Control-Allow-Origin', '*');
-      reply.header('Access-Control-Allow-Headers', 'content-type,x-requested-with');
-      reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-      return payload;
-    });
-
-    fastify.options('*', async (_request, reply) => {
-      reply.header('Access-Control-Allow-Origin', '*');
-      reply.header('Access-Control-Allow-Headers', 'content-type,x-requested-with');
-      reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-      reply.status(204).send();
-    });
+    addCors(app);
   }
 
   const {devUserAuth, routeFileStorage} = await import('@ticlo/file-server');
+  let server: ServerType | undefined;
 
   try {
-    routeFileStorage(
-      fastify,
-      {
-        rootDir: workspaceDir,
-        authProvider: () => devUserAuth,
-      } satisfies FileStorageOptions
-    );
+    routeFileStorage(app, {
+      rootDir: workspaceDir,
+      authProvider: () => devUserAuth,
+    } satisfies FileStorageOptions);
 
-    await fastify.listen({port: 0, host: '127.0.0.1'});
-    const address = fastify.server.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('Unable to determine server address');
-    }
-    const {port} = address as AddressInfo;
-    const baseUrl = "http://127.0.0.1:" + port + "/file";
+    const address = await new Promise<AddressInfo>((resolveListen) => {
+      server = serve(
+        {
+          fetch: app.fetch,
+          port: 0,
+          hostname: '127.0.0.1',
+        },
+        resolveListen
+      );
+    });
+    const baseUrl = 'http://127.0.0.1:' + address.port + '/file';
 
     let closed = false;
     const close = async () => {
@@ -78,21 +97,24 @@ export async function startFileServer(options: StartServerOptions = {}): Promise
       }
       closed = true;
       try {
-        await fastify.close();
+        await closeServer(server as ServerType);
       } finally {
         await rm(workspaceDir, {recursive: true, force: true});
       }
     };
 
     return {
-      fastify,
+      app,
+      server: server as ServerType,
       baseUrl,
       workspaceDir,
       close,
     };
   } catch (error) {
     await rm(workspaceDir, {recursive: true, force: true});
-    await fastify.close().catch(() => {});
+    if (server) {
+      await closeServer(server).catch(() => {});
+    }
     throw error;
   }
 }

@@ -1,13 +1,9 @@
-import {FastifyInstance, FastifyRequest} from 'fastify';
+import type {Hono} from 'hono';
 import {encodeX} from './encodeX';
 
-interface SessionQuerystring {
-  salt?: string;
-}
-
-export function registerSessionRoutes(fastify: FastifyInstance): void {
-  fastify.get('/session', async (request: FastifyRequest<{Querystring: SessionQuerystring}>) => {
-    const {salt} = request.query;
+export function registerSessionRoutes(app: Hono): void {
+  app.get('/session', (context) => {
+    const salt = context.req.query('salt');
     const result: Record<string, unknown> = {
       dist: 'Ticlo',
       type: 'ticlo',
@@ -17,6 +13,6 @@ export function registerSessionRoutes(fastify: FastifyInstance): void {
     if (salt) {
       result['productCode'] = encodeX(Math.random().toString(36).substring(2, 6) + salt + 'local-dev');
     }
-    return result;
+    return context.json(result);
   });
 }

@@ -1,6 +1,6 @@
 import {promises as fs} from 'node:fs';
 import path from 'node:path';
-import {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify';
+import type {Hono} from 'hono';
 import {UserAuth} from './auth';
 import {
   handleFileDownload,
@@ -24,7 +24,8 @@ import {
   handleReadProjectOp,
   handleUpdateProjectOp,
 } from './projectRouteHandlers';
-import {AuthProvider, FileQuerystring, FileStorageOptions} from './types';
+import {HonoReply} from './utils';
+import {AuthProvider, FileQuerystring, FileStorageOptions, StorageContext} from './types';
 
 const {mkdir} = fs;
 
@@ -37,57 +38,56 @@ const DEFAULT_AUTH: UserAuth = {
   canWrite: () => true,
 };
 
-export function routeFileStorage(fastify: FastifyInstance, options: FileStorageOptions = {}): void {
-  const prefix = options.prefix ?? DEFAULT_PREFIX;
+export function routeFileStorage(app: Hono, options: FileStorageOptions = {}): void {
+  const prefix = (options.prefix ?? DEFAULT_PREFIX).replace(/\/$/, '') || '/';
   const rootDir = path.resolve(options.rootDir ?? DEFAULT_ROOT);
   const authProvider: AuthProvider = options.authProvider ?? (() => DEFAULT_AUTH);
   const fileContext: FileRouteContext = {
     rootDir,
     authProvider,
-    logger: fastify.log,
+    logger: console,
   };
+  const ready = initStorageRoot(rootDir);
 
-  fastify.addContentTypeParser('application/octet-stream', {parseAs: 'buffer'}, (_request, payload, done) => {
-    done(null, payload);
+  app.get(prefix, async (request) => {
+    await ready;
+    const reply = new HonoReply();
+    const query = request.req.query() as FileQuerystring;
+    const op = query.op;
+    if (!op) {
+      reply.code(400).send({message: 'Missing op parameter'});
+      return reply.toResponse();
+    }
+    await dispatchOperation(op, query, request, reply);
+    return reply.toResponse();
   });
 
-  fastify.addHook('onReady', async () => {
-    await mkdir(rootDir, {recursive: true});
-    await mkdir(path.join(rootDir, 'proj'), {recursive: true});
-    await mkdir(path.join(rootDir, 'usr'), {recursive: true});
+  app.post(prefix, async (request) => {
+    await ready;
+    const reply = new HonoReply();
+    const query = request.req.query() as FileQuerystring;
+    const op = query.op;
+    if (!op) {
+      reply.code(400).send({message: 'Missing op parameter'});
+      return reply.toResponse();
+    }
+    await dispatchOperation(op, query, request, reply);
+    return reply.toResponse();
   });
 
-  fastify.get(prefix + '/*', async (request, reply) => {
-    const params = request.params as {'*': string};
-    const rawPath = params?.['*'] ?? '';
+  app.get(prefix + '/*', async (request) => {
+    await ready;
+    const reply = new HonoReply();
+    const rawPath = getDownloadPath(request, prefix);
     await handleFileDownload(request, reply, rawPath, fileContext);
-  });
-
-  fastify.get(prefix, async (request, reply) => {
-    const query = request.query as FileQuerystring;
-    const op = query.op;
-    if (!op) {
-      reply.code(400).send({message: 'Missing op parameter'});
-      return;
-    }
-    await dispatchOperation(op, query, request, reply);
-  });
-
-  fastify.post(prefix, async (request, reply) => {
-    const query = request.query as FileQuerystring;
-    const op = query.op;
-    if (!op) {
-      reply.code(400).send({message: 'Missing op parameter'});
-      return;
-    }
-    await dispatchOperation(op, query, request, reply);
+    return reply.toResponse();
   });
 
   async function dispatchOperation(
     op: string,
     query: FileQuerystring,
-    request: FastifyRequest,
-    reply: FastifyReply
+    request: StorageContext,
+    reply: HonoReply
   ): Promise<void> {
     switch (op) {
       case 'get': {
@@ -157,6 +157,22 @@ export function routeFileStorage(fastify: FastifyInstance, options: FileStorageO
       default:
         reply.code(400).send({message: 'Unsupported op: ' + op});
     }
+  }
+}
+
+async function initStorageRoot(rootDir: string): Promise<void> {
+  await mkdir(rootDir, {recursive: true});
+  await mkdir(path.join(rootDir, 'proj'), {recursive: true});
+  await mkdir(path.join(rootDir, 'usr'), {recursive: true});
+}
+
+function getDownloadPath(request: StorageContext, prefix: string): string {
+  const pathPrefix = prefix + '/';
+  const rawPath = request.req.path.startsWith(pathPrefix) ? request.req.path.slice(pathPrefix.length) : '';
+  try {
+    return decodeURIComponent(rawPath);
+  } catch {
+    return rawPath;
   }
 }
 

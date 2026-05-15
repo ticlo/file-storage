@@ -1,6 +1,79 @@
 import path from 'node:path';
-import type {FastifyBaseLogger, FastifyReply} from 'fastify';
+import {Readable} from 'node:stream';
 import {StorageError} from './types';
+
+interface StorageLogger {
+  error(error: unknown): void;
+}
+
+class HonoReply {
+  private readonly headers = new Headers();
+  private statusCode = 200;
+  private response?: Response;
+
+  code(statusCode: number): this {
+    this.statusCode = statusCode;
+    return this;
+  }
+
+  status(statusCode: number): this {
+    return this.code(statusCode);
+  }
+
+  header(name: string, value: number | string): this {
+    this.headers.set(name, String(value));
+    return this;
+  }
+
+  type(contentType: string): this {
+    return this.header('Content-Type', contentType);
+  }
+
+  sent(): boolean {
+    return Boolean(this.response);
+  }
+
+  send(payload?: unknown): Response {
+    if (payload instanceof Response) {
+      this.response = payload;
+      return payload;
+    }
+
+    let body: BodyInit | null = null;
+    if (payload === undefined || payload === null) {
+      body = null;
+    } else if (typeof payload === 'string') {
+      body = payload;
+    } else if (Buffer.isBuffer(payload)) {
+      body = payload as unknown as BodyInit;
+    } else if (payload instanceof ArrayBuffer) {
+      body = payload;
+    } else if (ArrayBuffer.isView(payload)) {
+      body = payload as unknown as BodyInit;
+    } else if (payload instanceof Blob || payload instanceof FormData || payload instanceof URLSearchParams) {
+      body = payload;
+    } else if (payload instanceof ReadableStream) {
+      body = payload;
+    } else if (payload instanceof Readable) {
+      body = Readable.toWeb(payload) as unknown as BodyInit;
+    } else {
+      body = JSON.stringify(payload);
+      if (!this.headers.has('Content-Type')) {
+        this.headers.set('Content-Type', 'application/json; charset=utf-8');
+      }
+    }
+
+    this.response = new Response(body, {
+      status: this.statusCode,
+      headers: this.headers,
+    });
+    return this.response;
+  }
+
+  toResponse(): Response {
+    return this.response ?? this.send();
+  }
+}
 
 function toPosix(parts: string[]): string {
   return parts.filter(Boolean).join('/');
@@ -26,13 +99,12 @@ function buildEtag(info: {mtimeMs: number; size: number}): string {
   return `W/"${info.size}-${modified}"`;
 }
 
-async function handleErrors<T>(
-  reply: FastifyReply,
-  executor: () => Promise<T>,
-  logger: FastifyBaseLogger
-): Promise<void> {
+async function handleErrors<T>(reply: HonoReply, executor: () => Promise<T>, logger: StorageLogger): Promise<void> {
   try {
     const payload = await executor();
+    if (reply.sent()) {
+      return;
+    }
     if (payload === undefined) {
       reply.code(204).send();
     } else {
@@ -48,4 +120,5 @@ async function handleErrors<T>(
   }
 }
 
-export {buildEtag, handleErrors, normalizeInput, toPosix};
+export {HonoReply, buildEtag, handleErrors, normalizeInput, toPosix};
+export type {StorageLogger};
