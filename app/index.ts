@@ -32,8 +32,9 @@ const server = serve(
     port: 8047,
     hostname: '0.0.0.0',
   },
-  () => {
-    console.log('Server running on http://localhost:8047');
+  ({port}) => {
+    console.log(`Ticlo file server listening on port ${port}`);
+    console.log(`  http://localhost:${port}`);
   }
 );
 
