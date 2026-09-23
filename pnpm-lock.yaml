@@ -10,10 +10,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.0.2
-        version: 2.0.2(hono@4.12.18)
+        version: 2.0.2(hono@4.13.7)
       hono:
-        specifier: ^4.12.18
-        version: 4.12.18
+        specifier: 4.13.7
+        version: 4.13.7
     devDependencies:
       '@eslint/js':
         specifier: ^9.36.0
@@ -79,9 +79,6 @@ importers:
       adm-zip:
         specifier: ^0.5.16
         version: 0.5.16
-      hono:
-        specifier: ^4.12.18
-        version: 4.12.18
     devDependencies:
       '@types/adm-zip':
         specifier: ^0.5.7
@@ -89,6 +86,9 @@ importers:
       '@types/node':
         specifier: ^24.5.2
         version: 24.5.2
+      hono:
+        specifier: 4.13.7
+        version: 4.13.7
       typescript:
         specifier: ^5.9.2
         version: 5.9.2
@@ -1617,8 +1617,8 @@ packages:
   headers-polyfill@4.0.3:
     resolution: {integrity: sha512-IScLbePpkvO846sIwOtOTDjutRMWdXdJmXdMvk6gCBHxFO8d+QKOQedyZSxFTTFYRSmlgSTDtXqqq4pcenBXLQ==}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.13.7:
+    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@4.0.0:
@@ -2892,9 +2892,9 @@ snapshots:
       '@eslint/core': 0.15.2
       levn: 0.4.1
 
-  '@hono/node-server@2.0.2(hono@4.12.18)':
+  '@hono/node-server@2.0.2(hono@4.13.7)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.13.7
 
   '@humanfs/core@0.19.1': {}
 
@@ -4138,7 +4138,7 @@ snapshots:
 
   headers-polyfill@4.0.3: {}
 
-  hono@4.12.18: {}
+  hono@4.13.7: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:

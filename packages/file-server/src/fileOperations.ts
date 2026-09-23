@@ -1,12 +1,12 @@
-import {createReadStream} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {constants as fsConstants, promises as fs} from 'node:fs';
 import path from 'node:path';
-import type {UserAuth} from './auth';
-import {lookUpMimeType} from './mimeTypes';
-import {buildEtag, handleErrors, normalizeInput, toPosix, type HonoReply, type StorageLogger} from './utils';
-import {AuthProvider, FileQuerystring, StorageContext, StorageError, StoragePath, StorageScope} from './types';
+import type {UserAuth} from './auth.js';
+import {lookUpMimeType} from './mimeTypes.js';
+import {buildEtag, handleErrors, normalizeInput, toPosix, type HonoReply, type StorageLogger} from './utils.js';
+import {AuthProvider, FileQuerystring, StorageContext, StorageError, StoragePath, StorageScope} from './types.js';
 
-const {stat, readdir, mkdir, access, rename, rm, copyFile, writeFile} = fs;
+const {stat, readdir, mkdir, access, rename, rm, copyFile, writeFile, readFile} = fs;
 
 const CRC32_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -41,6 +41,9 @@ function buildStoragePath(rawPath: string, baseDir: string): StoragePath {
     throw new StorageError('Unsupported storage scope', 400);
   }
   const scope = rawScope as StorageScope;
+  if (scope === 'proj' && id.includes('.')) {
+    throw new StorageError('Project id cannot contain dots', 400);
+  }
   if (!id) {
     throw new StorageError('Identifier segment is required', 400);
   }
@@ -112,13 +115,9 @@ async function streamToBuffer(request: StorageContext): Promise<Buffer> {
 
 const CACHE_CONTROL_HEADER = 'max-age=0, must-revalidate';
 
-async function sendFileReply(
-  request: StorageContext,
-  reply: HonoReply,
-  storage: StoragePath,
-  info: {mtime: Date; mtimeMs: number; size: number}
-) {
-  const etag = buildEtag(info);
+async function sendFileReply(request: StorageContext, reply: HonoReply, storage: StoragePath) {
+  const content = await readFile(storage.absolute);
+  const etag = buildEtag(content);
   const ifNoneMatchHeader = request.req.header('if-none-match');
   const presentedEtags = ifNoneMatchHeader ? ifNoneMatchHeader.split(',') : [];
   const normalizedEtags = presentedEtags.map((value) => value.trim());
@@ -132,9 +131,26 @@ async function sendFileReply(
 
   reply.header('Cache-Control', CACHE_CONTROL_HEADER);
   reply.header('ETag', etag);
-  reply.header('Content-Length', info.size);
+  reply.header('Content-Length', content.length);
   reply.type(lookUpMimeType(storage.absolute));
-  return reply.send(createReadStream(storage.absolute));
+  return reply.send(content);
+}
+
+async function checkFilePreconditions(request: StorageContext, filePath: string): Promise<void> {
+  const ifMatch = request.req.header('if-match');
+  const ifNoneMatch = request.req.header('if-none-match');
+  if (!ifMatch && !ifNoneMatch) return;
+  let etag: string;
+  try {
+    etag = buildEtag(await readFile(filePath));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const matches = (header: string) =>
+    Boolean(etag) && header.split(',').some((value) => value.trim() === '*' || value.trim() === etag);
+  if ((ifMatch && !matches(ifMatch)) || (ifNoneMatch && matches(ifNoneMatch))) {
+    throw new StorageError('File changed; reload before saving', 412);
+  }
 }
 
 async function listDirectory(storage: StoragePath): Promise<unknown[]> {
@@ -239,7 +255,7 @@ async function handleFileDownload(
       if (info.isDirectory()) {
         throw new StorageError('Requested path is a directory', 400);
       }
-      return sendFileReply(request, reply, storage, info);
+      return sendFileReply(request, reply, storage);
     },
     context.logger
   );
@@ -319,7 +335,6 @@ async function handleUploadOp(
       }
       const {storage, auth} = await resolveStorageContext(query.path, request, context);
       await ensureWrite(auth, storage.id);
-      await ensureParentDirectory(storage.absolute);
       const exists = await fileExists(storage.absolute);
       if (query.exists === 'fail' && exists) {
         throw new StorageError('File already exists', 409);
@@ -331,7 +346,16 @@ async function handleUploadOp(
           throw new StorageError('CRC mismatch', 412);
         }
       }
-      await writeFile(storage.absolute, buffer);
+      await checkFilePreconditions(request, storage.absolute);
+      await ensureParentDirectory(storage.absolute);
+      const temporary = path.join(path.dirname(storage.absolute), `.${randomUUID()}.tmp`);
+      try {
+        await writeFile(temporary, buffer, {flag: 'wx'});
+        await rename(temporary, storage.absolute);
+      } finally {
+        await rm(temporary, {force: true});
+      }
+      reply.header('ETag', buildEtag(buffer));
       reply.type('text/plain; charset=utf-8');
       return Buffer.byteLength(buffer).toString();
     },
@@ -375,6 +399,7 @@ async function handleDeleteOp(
       const {storage, auth} = await resolveStorageContext(query.path, request, context);
       await ensureWrite(auth, storage.id);
       try {
+        await checkFilePreconditions(request, storage.absolute);
         await rm(storage.absolute, {recursive: true, force: false});
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

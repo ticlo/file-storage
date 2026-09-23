@@ -53,12 +53,20 @@ async function requestOk(op: string, params: Record<string, string | undefined>,
   return response;
 }
 
-async function requestJson<T>(op: string, params: Record<string, string | undefined>, init: RequestInit = {}): Promise<T> {
+async function requestJson<T>(
+  op: string,
+  params: Record<string, string | undefined>,
+  init: RequestInit = {}
+): Promise<T> {
   const response = await requestOk(op, params, init);
   return response.json();
 }
 
-async function requestText(op: string, params: Record<string, string | undefined>, init: RequestInit = {}): Promise<string> {
+async function requestText(
+  op: string,
+  params: Record<string, string | undefined>,
+  init: RequestInit = {}
+): Promise<string> {
   const response = await requestOk(op, params, init);
   return response.text();
 }
@@ -177,10 +185,14 @@ describe('Browser TicloFileClient', () => {
     const metadata = await requestJson<ProjectMetadata>('readProj', {id: 'testProject1'});
     expect(metadata.id).toBe('testProject1');
 
-    const created = await requestJson<ProjectMetadata>('createProj', {
-      name: 'Browser Project',
-      template: 'testProject1',
-    });
+    const created = await requestJson<ProjectMetadata>(
+      'createProj',
+      {
+        name: 'Browser Project',
+        template: 'testProject1',
+      },
+      {method: 'POST'}
+    );
     const createdId = created.id;
     expect(createdId).toBeTruthy();
 

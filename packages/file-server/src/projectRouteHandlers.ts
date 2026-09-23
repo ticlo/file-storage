@@ -13,10 +13,10 @@ import {
   sanitizeProjectId,
   safeGetUserId,
   writeProjectMetadata,
-} from './projectOperations';
-import {handleErrors, type HonoReply} from './utils';
-import {ensureRead, ensureWrite, resolveAuth, streamToBuffer, type FileRouteContext} from './fileOperations';
-import {FileQuerystring, ProjectMetadata, StorageContext, StorageError} from './types';
+} from './projectOperations.js';
+import {handleErrors, type HonoReply} from './utils.js';
+import {ensureRead, ensureWrite, resolveAuth, streamToBuffer, type FileRouteContext} from './fileOperations.js';
+import {FileQuerystring, ProjectMetadata, StorageContext, StorageError} from './types.js';
 
 const {mkdir, rm} = fs;
 
@@ -71,19 +71,21 @@ async function handleCreateProjectOp(
       if (!nameParam) {
         throw new StorageError('Project name is required', 400);
       }
-      const templateId = sanitizeProjectId(query.template ?? '', 'Template id');
+      const templateId = query.template ? sanitizeProjectId(query.template, 'Template id') : undefined;
       const auth = await resolveAuth(context.authProvider, request);
-      await ensureRead(auth, templateId);
-      if (!(await projectDirectoryExists(context.rootDir, templateId))) {
-        throw new StorageError('Template project not found', 404);
+      if (templateId) {
+        await ensureRead(auth, templateId);
+        if (!(await projectDirectoryExists(context.rootDir, templateId))) {
+          throw new StorageError('Template project not found', 404);
+        }
       }
       const desiredId = normalizeProjectIdFromName(nameParam);
       const projectId = await generateUniqueProjectId(context.rootDir, desiredId);
       await ensureWrite(auth, projectId);
       const projectDir = projectRootPath(context.rootDir, projectId);
       await mkdir(projectDir, {recursive: true});
-      await copyTemplateDirectory(projectRootPath(context.rootDir, templateId), projectDir);
-      const templateMeta = await readProjectMetadata(context.rootDir, templateId);
+      if (templateId) await copyTemplateDirectory(projectRootPath(context.rootDir, templateId), projectDir);
+      const templateMeta = templateId ? await readProjectMetadata(context.rootDir, templateId) : null;
       const owner = await safeGetUserId(auth);
       const metadata: Record<string, unknown> = {
         owner,

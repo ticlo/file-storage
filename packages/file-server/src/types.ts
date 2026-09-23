@@ -1,5 +1,5 @@
 import type {Context} from 'hono';
-import type {UserAuth} from './auth';
+import type {UserAuth} from './auth.js';
 
 type StorageContext = Context;
 type AuthProvider = (request: StorageContext) => UserAuth | Promise<UserAuth>;

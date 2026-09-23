@@ -5,7 +5,7 @@ import axios, {
   CreateAxiosDefaults,
   type AxiosHeaderValue,
 } from 'axios';
-import type {ExistsBehavior, FileEntry, FileInfo, ProjectMetadata} from './types';
+import type {ExistsBehavior, FileEntry, FileInfo, ProjectMetadata} from './types.js';
 
 interface UploadOptions {
   existsBehavior?: ExistsBehavior;
@@ -55,6 +55,16 @@ class TicloFileClient {
     options: UploadOptions = {},
     config?: AxiosRequestConfig
   ): Promise<string> {
+    return (await this.uploadFileResponse(path, payload, options, config)).data;
+  }
+
+  /** Upload a file and retain response headers, including its new ETag. */
+  async uploadFileResponse(
+    path: string,
+    payload: UploadPayload,
+    options: UploadOptions = {},
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<string>> {
     const query: Record<string, unknown> = {path: normalizeOpPath(path)};
     if (options.existsBehavior === 'fail') {
       query.exists = 'fail';
@@ -63,7 +73,7 @@ class TicloFileClient {
       query.crc = options.crc;
     }
     const mergedConfig = mergeHeaders(config, {'Content-Type': 'application/octet-stream'});
-    return this.requestOp<string>('POST', 'upload', query, payload, mergedConfig);
+    return this.requestOpResponse<string>('POST', 'upload', query, payload, mergedConfig);
   }
 
   async createDirectory(path: string, config?: AxiosRequestConfig): Promise<void> {
@@ -121,10 +131,10 @@ class TicloFileClient {
     return this.requestOp<ProjectMetadata>('GET', 'readProj', {id: normalizeIdentifier(id)}, undefined, config);
   }
 
-  async createProject(name: string, templateId: string, config?: AxiosRequestConfig): Promise<ProjectMetadata> {
+  async createProject(name: string, templateId?: string, config?: AxiosRequestConfig): Promise<ProjectMetadata> {
     const query = {
       name: validateProjectName(name),
-      template: normalizeIdentifier(templateId),
+      template: templateId === undefined ? undefined : normalizeIdentifier(templateId),
     };
     return this.requestOp<ProjectMetadata>('POST', 'createProj', query, undefined, config);
   }
@@ -174,6 +184,16 @@ class TicloFileClient {
     data?: unknown,
     config: AxiosRequestConfig = {}
   ): Promise<T> {
+    return (await this.requestOpResponse<T>(method, op, query, data, config)).data;
+  }
+
+  private async requestOpResponse<T>(
+    method: 'GET' | 'POST',
+    op: string,
+    query: Record<string, unknown> = {},
+    data?: unknown,
+    config: AxiosRequestConfig = {}
+  ): Promise<AxiosResponse<T>> {
     const {params: configParams, data: configData, headers: configHeaders, ...restConfig} = config;
     const params = mergeQuery(configParams, op, query);
 
@@ -215,8 +235,7 @@ class TicloFileClient {
       finalConfig.headers = finalHeaders;
     }
 
-    const response = await this.axiosInstance.request<T>(finalConfig);
-    return response.data;
+    return this.axiosInstance.request<T>(finalConfig);
   }
 }
 

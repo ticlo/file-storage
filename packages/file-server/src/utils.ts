@@ -1,6 +1,7 @@
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {StorageError} from './types';
+import {StorageError} from './types.js';
 
 interface StorageLogger {
   error(error: unknown): void;
@@ -94,9 +95,21 @@ function normalizeInput(rawPath?: string): string {
   return normalized;
 }
 
-function buildEtag(info: {mtimeMs: number; size: number}): string {
-  const modified = Math.trunc(info.mtimeMs);
-  return `W/"${info.size}-${modified}"`;
+function buildEtag(content: Uint8Array): string {
+  return `"${createHash('sha256').update(content).digest('hex')}"`;
+}
+
+// Serialize mutations, including directory moves/deletions, for one storage root.
+const mutations = new Map<string, Promise<unknown>>();
+async function withStorageLock<T>(root: string, operation: () => Promise<T>): Promise<T> {
+  const previous = mutations.get(root) ?? Promise.resolve();
+  const pending = previous.catch(() => {}).then(operation);
+  mutations.set(root, pending);
+  try {
+    return await pending;
+  } finally {
+    if (mutations.get(root) === pending) mutations.delete(root);
+  }
 }
 
 async function handleErrors<T>(reply: HonoReply, executor: () => Promise<T>, logger: StorageLogger): Promise<void> {
@@ -120,5 +133,5 @@ async function handleErrors<T>(reply: HonoReply, executor: () => Promise<T>, log
   }
 }
 
-export {HonoReply, buildEtag, handleErrors, normalizeInput, toPosix};
+export {HonoReply, buildEtag, handleErrors, normalizeInput, toPosix, withStorageLock};
 export type {StorageLogger};

@@ -1,7 +1,7 @@
 import {promises as fs} from 'node:fs';
 import path from 'node:path';
 import type {Hono} from 'hono';
-import {UserAuth} from './auth';
+import {UserAuth} from './auth.js';
 import {
   handleFileDownload,
   handleGetOp,
@@ -14,7 +14,7 @@ import {
   handleCopyOp,
   handleRenameOp,
   type FileRouteContext,
-} from './fileOperations';
+} from './fileOperations.js';
 import {
   handleCreateProjectOp,
   handleDeleteProjectOp,
@@ -23,9 +23,9 @@ import {
   handleListProjectsOp,
   handleReadProjectOp,
   handleUpdateProjectOp,
-} from './projectRouteHandlers';
-import {HonoReply} from './utils';
-import {AuthProvider, FileQuerystring, FileStorageOptions, StorageContext} from './types';
+} from './projectRouteHandlers.js';
+import {HonoReply, withStorageLock} from './utils.js';
+import {AuthProvider, FileQuerystring, FileStorageOptions, StorageContext} from './types.js';
 
 const {mkdir} = fs;
 
@@ -58,6 +58,9 @@ export function routeFileStorage(app: Hono, options: FileStorageOptions = {}): v
       reply.code(400).send({message: 'Missing op parameter'});
       return reply.toResponse();
     }
+    if (!['get', 'list', 'info', 'listProj', 'readProj', 'exportProj'].includes(op)) {
+      return reply.code(405).header('Allow', 'POST').send({message: 'Operation requires POST'});
+    }
     await dispatchOperation(op, query, request, reply);
     return reply.toResponse();
   });
@@ -71,7 +74,7 @@ export function routeFileStorage(app: Hono, options: FileStorageOptions = {}): v
       reply.code(400).send({message: 'Missing op parameter'});
       return reply.toResponse();
     }
-    await dispatchOperation(op, query, request, reply);
+    await withStorageLock(rootDir, () => dispatchOperation(op, query, request, reply));
     return reply.toResponse();
   });
 
@@ -176,6 +179,6 @@ function getDownloadPath(request: StorageContext, prefix: string): string {
   }
 }
 
-export {devUserAuth} from './auth';
-export type {UserAuth} from './auth';
+export {devUserAuth} from './auth.js';
+export type {UserAuth} from './auth.js';
 export type {FileStorageOptions, AuthProvider};

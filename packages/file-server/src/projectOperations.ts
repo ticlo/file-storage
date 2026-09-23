@@ -2,9 +2,9 @@ import type {Dirent} from 'node:fs';
 import {constants as fsConstants, promises as fs} from 'node:fs';
 import path from 'node:path';
 import AdmZip, {IZipEntry} from 'adm-zip';
-import type {UserAuth} from './auth';
-import {ensureParentDirectory, ensureWrite} from './fileOperations';
-import {ProjectMetadata, StorageError} from './types';
+import type {UserAuth} from './auth.js';
+import {ensureParentDirectory, ensureWrite} from './fileOperations.js';
+import {ProjectMetadata, StorageError} from './types.js';
 
 const {access, readdir, mkdir, copyFile, writeFile, readFile, rm} = fs;
 
@@ -20,7 +20,7 @@ function sanitizeProjectId(rawId?: string | null, field = 'Project id'): string 
   if (!trimmed) {
     throw new StorageError(`${field} is required`, 400);
   }
-  if (trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..')) {
+  if (trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('.')) {
     throw new StorageError('Invalid project id', 400);
   }
   return trimmed;
@@ -86,7 +86,7 @@ async function listProjectsForAuth(baseDir: string, auth: UserAuth): Promise<Pro
 
   const visibleProjects: ProjectMetadata[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) {
+    if (!entry.isDirectory() || entry.name.includes('.')) {
       continue;
     }
     const projectId = entry.name;
