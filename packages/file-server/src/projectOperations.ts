@@ -9,7 +9,8 @@ import {ProjectMetadata, StorageError} from './types.js';
 const {access, readdir, mkdir, copyFile, writeFile, readFile, rm} = fs;
 
 const PROJECT_SCOPE = 'proj';
-const PROJECT_METADATA_FILE = '_proj.json';
+const PROJECT_METADATA_FILE = '#proj.json';
+const LEGACY_PROJECT_METADATA_FILE = '_proj.json';
 const KEEP_DIRECTORY_PLACEHOLDER = '.DGSERVER_KEEP_DIRECTORY';
 
 function sanitizeProjectId(rawId?: string | null, field = 'Project id'): string {
@@ -222,7 +223,9 @@ async function importProjectsFromArchive(
   }
 
   let forcedProjectId: string | null = null;
-  const singleProjectMeta = entries.find((entry) => entry.entryName.replace(/\\/g, '/') === PROJECT_METADATA_FILE);
+  const findRootMetadata = (name: string) =>
+    entries.find((entry) => !entry.isDirectory && entry.entryName.replace(/\\/g, '/').replace(/^\/+/, '') === name);
+  const singleProjectMeta = findRootMetadata(PROJECT_METADATA_FILE) ?? findRootMetadata(LEGACY_PROJECT_METADATA_FILE);
   if (singleProjectMeta) {
     const parsed = JSON.parse(singleProjectMeta.getData().toString('utf8')) as Record<string, unknown>;
     const rawId = typeof parsed.id === 'string' ? parsed.id : undefined;
@@ -283,6 +286,10 @@ async function importProjectsFromArchive(
     const projectRoot = projectRootPath(baseDir, projectId);
     await mkdir(projectRoot, {recursive: true});
 
+    const hasCurrentMetadata = items.some(
+      ({entry, relativePath}) => !entry.isDirectory && relativePath === PROJECT_METADATA_FILE
+    );
+    let convertedLegacyMetadata = false;
     for (const {entry, relativePath} of items) {
       if (!relativePath && entry.isDirectory) {
         continue;
@@ -290,7 +297,12 @@ async function importProjectsFromArchive(
       if (relativePath.endsWith(KEEP_DIRECTORY_PLACEHOLDER)) {
         continue;
       }
-      const safeRelative = relativePath.replace(/\\/g, '/');
+      const legacyMetadata = !entry.isDirectory && relativePath === LEGACY_PROJECT_METADATA_FILE;
+      if (legacyMetadata) {
+        convertedLegacyMetadata = true;
+        if (hasCurrentMetadata) continue;
+      }
+      const safeRelative = legacyMetadata ? PROJECT_METADATA_FILE : relativePath.replace(/\\/g, '/');
       const destinationPath = path.join(projectRoot, safeRelative);
       if (entry.isDirectory) {
         await mkdir(destinationPath, {recursive: true});
@@ -314,6 +326,9 @@ async function importProjectsFromArchive(
       metadata.canWrite = [];
     }
     const saved = await writeProjectMetadata(baseDir, projectId, metadata);
+    if (convertedLegacyMetadata) {
+      await rm(path.join(projectRoot, LEGACY_PROJECT_METADATA_FILE), {force: true});
+    }
     importedProjects.set(projectId, saved);
   }
 
