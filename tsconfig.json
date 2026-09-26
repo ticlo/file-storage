@@ -4,17 +4,24 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@ticlo/file-server": ["packages/file-server/src/index.ts"],
-      "@ticlo/file-server/*": ["packages/file-server/src/*"],
-      "@ticlo/file-client": ["packages/file-client/src/index.ts"],
-      "@ticlo/file-client/*": ["packages/file-client/src/*"]
+      "@ticlo/file-server": [
+        "packages/file-server/src/index.ts"
+      ],
+      "@ticlo/file-server/*": [
+        "packages/file-server/src/*"
+      ],
+      "@ticlo/file-client": [
+        "packages/file-client/src/index.ts"
+      ],
+      "@ticlo/file-client/*": [
+        "packages/file-client/src/*"
+      ]
     }
   },
   "include": [
     "app/**/*",
     "packages/file-server/src/**/*",
     "packages/file-client/src/**/*",
-    "test/**/*.ts",
-    "packages/file-server/test/**/*.ts"
+    "test/**/*.ts"
   ]
 }

@@ -26,25 +26,13 @@ await client.createDirectory(`proj/${project.id}/deps/shared`);
 
 Project IDs cannot contain dots. `createProject(name, templateId?, config?)`
 creates an empty project when the template is omitted; supplying a template
-retains template-copy behavior. Projects live in `proj/<id>` with `#proj.json`
+retains template-copy behavior. Projects live in `proj/<id>` with `_proj.json`
 metadata. User files live in `usr/<id>`. Empty directories are preserved and
-returned by the listing API. Hidden entries and `#proj.json` are omitted from
+returned by the listing API. Hidden entries and `_proj.json` are omitted from
 file listings. Existing projects with dotted IDs are not listed or accessible.
 
 Read operations (`get`, `list`, `info`, `listProj`, `readProj`, `exportProj`)
 support GET. Mutating operations require POST; GET returns HTTP 405.
-
-## Project archive compatibility
-
-New projects and exports use `#proj.json`. Import accepts both ZIP layouts:
-a single project with metadata at the archive root, or project directories with
-metadata at each project root. Legacy `_proj.json` metadata is converted to
-`#proj.json` during import. If an archive contains both names, `#proj.json` wins;
-the imported project retains only the new metadata file. Files named `_proj.json`
-in project subdirectories are ordinary files and remain unchanged.
-
-Compatibility applies to archive import only. Existing storage directories must
-rename their project-root `_proj.json` to `#proj.json` before normal project reads.
 
 ## Conditional writes
 

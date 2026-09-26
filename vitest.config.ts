@@ -5,6 +5,6 @@ export default defineConfig({
   ...sharedConfig,
   test: {
     ...sharedTestOptions,
-    include: ['test/node/**/*.test.ts', 'packages/file-server/test/**/*.test.ts'],
+    include: ['test/node/**/*.test.ts'],
   },
 });

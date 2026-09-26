@@ -158,7 +158,7 @@ async function listDirectory(storage: StoragePath): Promise<unknown[]> {
     const entries = await readdir(storage.absolute, {withFileTypes: true});
     const results: unknown[] = [];
     for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === '#proj.json') {
+      if (entry.name.startsWith('.') || entry.name === '_proj.json') {
         continue;
       }
       const relativeName = storage.relative ? `${storage.relative}/${entry.name}` : entry.name;
